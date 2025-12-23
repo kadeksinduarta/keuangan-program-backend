@@ -103,7 +103,7 @@ class ProgramController extends Controller
     /**
      * Display the specified program
      */
-    public function show(Request $request, int $id)
+    public function show(Request $request, $id)
     {
         $program = Program::with(['creator', 'userRoles.user', 'rabItems', 'transactions'])
             ->findOrFail($id);
@@ -119,7 +119,7 @@ class ProgramController extends Controller
     /**
      * Update the specified program
      */
-    public function update(Request $request, int $id)
+    public function update(Request $request, $id)
     {
         $program = Program::findOrFail($id);
         $user = $request->user();
@@ -168,7 +168,7 @@ class ProgramController extends Controller
     /**
      * Update program status
      */
-    public function updateStatus(Request $request, int $id)
+    public function updateStatus(Request $request, $id)
     {
         $program = Program::findOrFail($id);
         $user = $request->user();
@@ -222,7 +222,7 @@ class ProgramController extends Controller
     /**
      * Remove the specified program
      */
-    public function destroy(Request $request, int $id)
+    public function destroy(Request $request, $id)
     {
         $program = Program::findOrFail($id);
         $user = $request->user();
@@ -263,17 +263,18 @@ class ProgramController extends Controller
     /**
      * Add a member to the program
      */
-    public function addMember(Request $request, int $id)
+    public function addMember(Request $request, $id)
     {
         $program = Program::findOrFail($id);
         $user = $request->user();
 
-        // Cek akses: harus ketua
-        $userRole = ProgramUserRole::where('program_id', $program->id)
+        // Cek akses: harus ketua atau admin
+        $isKetua = ProgramUserRole::where('program_id', $program->id)
             ->where('user_id', $user->id)
-            ->first();
+            ->where('role', 'ketua')
+            ->exists();
 
-        if (!$userRole || !in_array($userRole->role, ['ketua']) && !$user->isAdmin()) {
+        if (!$isKetua && !$user->isAdmin()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Hanya ketua program yang bisa menambah anggota.'
@@ -302,7 +303,7 @@ class ProgramController extends Controller
             'program_id' => $program->id,
             'user_id' => $validated['user_id'],
             'role' => $validated['role'],
-            'status' => 'pending',
+            'status' => 'approved',
         ]);
 
         return response()->json([
@@ -315,7 +316,7 @@ class ProgramController extends Controller
     /**
      * Approve invitation by invited user
      */
-    public function approveMember(Request $request, int $programId)
+    public function approveMember(Request $request, $programId)
     {
         $user = $request->user();
         $role = ProgramUserRole::where('program_id', $programId)
@@ -339,7 +340,7 @@ class ProgramController extends Controller
     /**
      * Remove a member from the program
      */
-    public function removeMember(Request $request, int $id, int $userId)
+    public function removeMember(Request $request, $id, $userId)
     {
         $program = Program::findOrFail($id);
         $user = $request->user();
@@ -379,7 +380,7 @@ class ProgramController extends Controller
     /**
      * Get all members of a program
      */
-    public function getMembers(Request $request, int $id)
+    public function getMembers(Request $request, $id)
     {
         $program = Program::findOrFail($id);
         

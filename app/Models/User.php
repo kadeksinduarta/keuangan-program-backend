@@ -52,21 +52,22 @@ class User extends Authenticatable
     }
 
     /**
-     * Programs where this user is the admin
-     */
-    public function adminPrograms()
-    {
-        return $this->hasMany(Program::class, 'admin_id');
-    }
-
-    /**
-     * Programs where this user is a member
+     * Programs where this user has a role
      */
     public function programs()
     {
-        return $this->belongsToMany(Program::class, 'program_members')
+        return $this->belongsToMany(Program::class, 'program_user_roles')
             ->withTimestamps()
-            ->withPivot('joined_at');
+            ->withPivot('role', 'status');
+    }
+
+    /**
+     * Check if user belongs to a program
+     */
+    public function belongsToProgram($programId): bool
+    {
+        if (!is_numeric($programId)) return false;
+        return $this->programs()->where('program_id', $programId)->where('program_user_roles.status', 'approved')->exists();
     }
 
     /**

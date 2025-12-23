@@ -132,6 +132,26 @@ class DashboardController extends Controller
             ],
         ];
 
+        // Members spending chart data from Transactions (source of truth for dashboard)
+        $memberSpending = \App\Models\ProgramUserRole::where('program_id', $programId)
+            ->where('program_user_roles.status', 'approved')
+            ->with('user')
+            ->get()
+            ->map(function ($role) use ($programId) {
+                // Sum all expense transactions attributed to this user
+                $totalSpent = \App\Models\Transaction::where('program_id', $programId)
+                    ->where('type', 'expense')
+                    ->where('created_by', $role->user_id)
+                    ->sum('amount');
+                
+                return [
+                    'name' => $role->user->full_name ?: $role->user->name,
+                    'amount' => (float)$totalSpent,
+                ];
+            })
+            ->filter(fn($m) => $m['amount'] > 0)
+            ->values();
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -143,12 +163,13 @@ class DashboardController extends Controller
                     'total_income' => $totalIncome,
                     'total_expense' => $totalExpense,
                     'balance' => $balance,
+                    'total_members' => $program->total_members,
                 ],
                 'account_breakdown' => $accountBreakdown,
-                'payment_details' => $paymentDetails,
                 'category_breakdown' => $categoryBreakdown,
                 'rab_items_progress' => $rabItemsProgress,
                 'recent_transactions' => $recentTransactions,
+                'member_spending' => $memberSpending,
                 'warnings' => $warnings,
             ]
         ]);

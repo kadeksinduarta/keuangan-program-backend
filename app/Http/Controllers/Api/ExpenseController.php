@@ -20,22 +20,24 @@ class ExpenseController extends Controller
      */
     public function index(Request $request, $programId)
     {
+        if (!is_numeric($programId)) {
+            return response()->json(['message' => 'Invalid program ID'], 400);
+        }
         $program = Program::findOrFail($programId);
         $user = $request->user();
 
         // Check access
-        if ($program->created_by !== $user->id && !$program->members->contains($user->id)) {
+        if ($program->created_by !== $user->id && !$user->belongsToProgram($programId) && !$user->isAdmin()) {
             return response()->json(['message' => 'Unauthorized access'], 403);
         }
 
-        $query = Expense::where('program_id', $programId)
+        $query = Expense::where('expenses.program_id', $programId)
             ->with(['category', 'submittedBy', 'approvedBy', 'receipts'])
-            ->orderBy('created_at', 'desc');
+            ->orderBy('expenses.created_at', 'desc');
 
-        // Filter by user if not admin/creator (assuming 'admin' role check is needed or based on program ownership)
-        // If the user model has a 'role' attribute, check it. Or check if user is program creator.
-        // Based on frontend logic: if (user?.role !== 'admin' && e.submitted_by?.id !== user?.id)
-        if ($user->role !== 'admin' && $program->created_by !== $user->id) {
+        // Filter by user if not admin/creator/ketua/bendahara
+        $userRole = $program->getUserRole($user->id);
+        if (!$user->isAdmin() && $program->created_by !== $user->id && !in_array($userRole, ['ketua', 'bendahara'])) {
              $query->where('submitted_by', $user->id);
         }
 
@@ -49,11 +51,14 @@ class ExpenseController extends Controller
      */
     public function store(Request $request, $programId)
     {
+        if (!is_numeric($programId)) {
+            return response()->json(['message' => 'Invalid program ID'], 400);
+        }
         $program = Program::findOrFail($programId);
         $user = $request->user();
 
-        // Check access (must be member or admin)
-        if ($program->created_by !== $user->id && !$program->members->contains($user->id)) {
+        // Check access (must be creator, member, or admin)
+        if ($program->created_by !== $user->id && !$user->belongsToProgram($programId) && !$user->isAdmin()) {
             return response()->json(['message' => 'Unauthorized. Not a member of this program.'], 403);
         }
 
@@ -150,7 +155,7 @@ class ExpenseController extends Controller
 
         // Check access
         $program = $expense->program;
-        if ($program->created_by !== $user->id && !$program->members->contains($user->id)) {
+        if ($program->created_by !== $user->id && !$user->belongsToProgram($program->id) && !$user->isAdmin()) {
             return response()->json(['message' => 'Unauthorized access'], 403);
         }
 
@@ -244,9 +249,9 @@ class ExpenseController extends Controller
         $expense = Expense::with(['program', 'category', 'submittedBy'])->findOrFail($id);
         $user = $request->user();
 
-        // Only program admin can approve
-        if ($expense->program->admin_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized. Only program admin can approve expenses.'], 403);
+        // Only program ketua or system admin can approve
+        if (!$expense->program->isUserKetua($user->id) && $expense->program->created_by !== $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized. Only program ketua can approve expenses.'], 403);
         }
 
         // Only pending expenses can be approved
@@ -275,6 +280,34 @@ class ExpenseController extends Controller
 
             // Update category spent amount
             $category->increment('spent_amount', $expense->amount);
+
+            // Create Transaction record for synchronization
+            $transaction = \App\Models\Transaction::create([
+                'program_id' => $expense->program_id,
+                'expense_id' => $expense->id,
+                'type' => 'expense',
+                'date' => $expense->transaction_date ?: now(),
+                'amount' => $expense->amount,
+                'description' => "[Expense] " . ($expense->description ?: $category->name),
+                'created_by' => $expense->submitted_by, // The one who spent it
+            ]);
+
+            // Try to link with a RabItem for budget tracking consistency
+            $rabItem = \App\Models\RabItem::where('program_id', $expense->program_id)
+                ->where('category', $category->name)
+                ->first();
+            
+            if ($rabItem) {
+                \App\Models\TransactionRabItem::create([
+                    'transaction_id' => $transaction->id,
+                    'rab_item_id' => $rabItem->id,
+                    'amount' => $expense->amount,
+                ]);
+                
+                // Recalculate status of RabItem
+                $rabService = app(\App\Services\RabService::class);
+                $rabService->recalculateStatus($rabItem);
+            }
 
             // Log activity
             ActivityLog::create([
@@ -314,9 +347,9 @@ class ExpenseController extends Controller
         $expense = Expense::with(['program', 'submittedBy'])->findOrFail($id);
         $user = $request->user();
 
-        // Only program admin can reject
-        if ($expense->program->admin_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized. Only program admin can reject expenses.'], 403);
+        // Only program ketua or system admin can reject
+        if (!$expense->program->isUserKetua($user->id) && $expense->program->created_by !== $user->id && !$user->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized. Only program ketua can reject expenses.'], 403);
         }
 
         // Only pending expenses can be rejected

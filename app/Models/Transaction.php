@@ -13,12 +13,18 @@ class Transaction extends Model
 
     protected $fillable = [
         'program_id',
+        'expense_id',
         'type',
         'date',
         'amount',
         'description',
         'created_by',
     ];
+
+    public function expense(): BelongsTo
+    {
+        return $this->belongsTo(Expense::class);
+    }
 
     protected $casts = [
         'date' => 'date',

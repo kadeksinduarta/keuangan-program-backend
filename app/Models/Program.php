@@ -144,4 +144,37 @@ class Program extends Model
     {
         return $this->isActive() && $this->hasRab();
     }
+
+    /**
+     * Get user role in this program
+     */
+    public function getUserRole($userId): ?string
+    {
+        $role = $this->userRoles()->where('user_id', $userId)->where('status', 'approved')->first();
+        return $role ? $role->role : null;
+    }
+
+    /**
+     * Check if user is ketua
+     */
+    public function isUserKetua($userId): bool
+    {
+        return $this->getUserRole($userId) === 'ketua';
+    }
+
+    /**
+     * Check if user is bendahara
+     */
+    public function isUserBendahara($userId): bool
+    {
+        return $this->getUserRole($userId) === 'bendahara';
+    }
+
+    /**
+     * Get total members count
+     */
+    public function getTotalMembersAttribute(): int
+    {
+        return $this->userRoles()->where('status', 'approved')->count();
+    }
 }

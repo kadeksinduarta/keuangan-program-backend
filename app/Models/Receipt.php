@@ -9,6 +9,7 @@ class Receipt extends Model
 {
     protected $fillable = [
         'transaction_id',
+        'expense_id',
         'file_path',
         'original_filename',
         'mime_type',
@@ -18,6 +19,11 @@ class Receipt extends Model
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
+    }
+
+    public function expense(): BelongsTo
+    {
+        return $this->belongsTo(Expense::class);
     }
 
     public function uploader(): BelongsTo
